@@ -1,0 +1,289 @@
+//
+// Created by asimy on 6/25/2026.
+//
+
+#include "GameController.h"
+
+#include "BaseMinesweeper.h"
+
+#include "NoGuessMinesweeper.h"
+
+#include "raylib.h"
+
+void GameController::run() {
+        selectedMode = GameMode::CLASSIC;
+        engine = std::make_unique<ClassicMinesweeper>();
+        engine->loadBoard(BEGINNER.width, BEGINNER.height, BEGINNER.mineCount);
+
+        InitWindow(800, 600, "MinesweeperClassic");
+        SetTargetFPS(120);
+
+        camera.target = {0.0f, 0.0f};
+        camera.offset = {0.0f, 0.0f};
+        camera.rotation = 0.0f;
+        camera.zoom = 1.0f;
+
+        appState = AppState::MAIN_MENU;
+
+        while (!WindowShouldClose()) {
+                handleInput(); // Correctly routes logic based on menu vs playing
+                update(); // Updates logic streams
+                render(); // Correctly routes clear screens and button overlays
+        }
+        CloseWindow();
+}
+
+
+void GameController::handleInput() {
+        switch (appState) {
+                case AppState::MAIN_MENU:
+                        handleMenuInput();
+                        break;
+                case AppState::PLAYING:
+                        handleGameInput();
+                        break;
+                case AppState::OPTIONS:
+                        break;
+        }
+}
+
+
+void GameController::render() const {
+        switch (appState) {
+                case AppState::MAIN_MENU:
+                        renderMainMenu();
+                        break;
+                case AppState::PLAYING:
+                        renderGame();
+                        break;
+                case AppState::OPTIONS:
+                        break;
+        }
+}
+
+//Main Menu UI and Logic
+void GameController::renderMainMenu() const {
+        BeginDrawing();
+        ClearBackground(DARKGRAY);
+
+        DrawText("MINESWEEPER", 200, 100, 60, RAYWHITE);
+        DrawText(selectedMode == GameMode::CLASSIC
+                         ? "Mode: Classic (Press M to toggle)"
+                         : "Mode NoGuess (Press M to toggle)", 250, 180, 20, LIGHTGRAY);
+
+
+        int buttonWidth = 300;
+        int buttonHeight = 50;
+        int startX = 250;
+        int startY = 250;
+        const char *labels[] = {"Beginner (9x9)", "Intermediate (16x16)", "Expert (30x16)", "Evil (30x20)"};
+
+        for (int i = 0; i < 4; ++i) {
+                Rectangle btnRect = {
+                        (float) startX, (float) startY + i * 70, (float) buttonWidth, (float) buttonHeight
+                };
+                if (CheckCollisionPointRec(GetMousePosition(), btnRect)) {
+                        DrawRectangleRec(btnRect, LIGHTGRAY);
+                        DrawText(labels[i], startX + 20, startY + 15 + i * 70, 20, BLACK);
+                } else {
+                        DrawRectangleRec(btnRect, GRAY);
+                        DrawText(labels[i], startX + 20, startY + 15 + i * 70, 20, RAYWHITE);
+                }
+        }
+        EndDrawing();
+}
+
+void GameController::handleMenuInput() {
+        if (IsKeyPressed(KEY_M)) {
+                selectedMode = selectedMode == GameMode::CLASSIC ? GameMode::NO_GUESS : GameMode::CLASSIC;
+        }
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                Vector2 mouse = GetMousePosition();
+                int startX = 250;
+                int startY = 250;
+
+                if (CheckCollisionPointRec(mouse, {(float) startX, (float) startY, 300, 50})) {
+                        reset(BEGINNER);
+                } else if (CheckCollisionPointRec(mouse, {(float) startX, (float) startY + 70, 300, 50})) {
+                        reset(INTERMEDIATE);
+                } else if (CheckCollisionPointRec(mouse, {(float) startX, (float) startY + 140, 300, 50})) {
+                        reset(EXPERT);
+                } else if (CheckCollisionPointRec(mouse, {(float) startX, (float) startY + 210, 300, 50})) {
+                        reset(EVIL);
+                }
+        }
+}
+
+
+void GameController::renderGame() const {
+        BeginDrawing();
+        ClearBackground(DARKGRAY);
+
+        DrawRectangle(0, 0, GetScreenWidth(), 60, GetColor(0x333333FF));
+        DrawText(TextFormat("MINES: %03d", engine->total_mines() - engine->total_flags()), 20, 20, 20, RED);
+        DrawText(TextFormat("TIME: %03d", timeElapsed), GetScreenWidth() - 120, 20, 20, RED);
+
+
+        if (currentState == GameState::WON) {
+                DrawText("YOU WIN! (Press R to restart / ESC for Menu)", GetScreenWidth() / 2 - 200, 20, 20, GREEN);
+        }
+        if (currentState == GameState::LOST) {
+                DrawText("GAME OVER (Press R to restart / ESC for Menu)", GetScreenWidth() / 2 - 220, 20, 20, RED);
+        }
+
+
+        BeginMode2D(camera);
+        for (int idx = 0; idx < engine->getGrid().size(); ++idx) {
+                const Cell &cell = engine->getGrid()[idx];
+                int x = (idx % engine->getWidth()) * tileSize;
+                int y = (idx / engine->getWidth()) * tileSize;
+
+                Rectangle rect = {(float) x, (float) y, (float) tileSize - 3, (float) tileSize - 3};
+
+                if (!cell.isRevealed) {
+                        DrawRectangleRec(rect, cell.isFlagged ? RED : LIGHTGRAY);
+                } else {
+                        DrawRectangleRec(rect, cell.isMine ? RED : RAYWHITE);
+                        if (cell.neighboringMines > 0 && !cell.isMine) {
+                                DrawText(TextFormat("%d", cell.neighboringMines), x + 10, y + 6, 20,
+                                         getNumberColor(cell.neighboringMines));
+                        }
+                }
+        }
+        EndMode2D();
+        EndDrawing();
+}
+
+void GameController::handleGameInput() {
+        if (IsKeyPressed(KEY_ESCAPE)) {
+                appState = AppState::MAIN_MENU;
+                SetWindowSize(800, 600); // Snap viewport space back to menu dimensions
+                return;
+        }
+        float wheel = GetMouseWheelMove();
+        if (wheel != 0) {
+                Vector2 mouseWorldPos = GetScreenToWorld2D(GetMousePosition(), camera);
+                camera.target = mouseWorldPos;
+                camera.offset = GetMousePosition();
+                camera.zoom += (wheel * 0.1f);
+                if (camera.zoom < 0.2f) camera.zoom = 0.2f;
+        }
+
+        if (currentState == GameState::LOST || currentState == GameState::WON) {
+                if (IsKeyPressed(KEY_R)) {
+                        reset({engine->getWidth(), engine->getHeight(), engine->total_mines()});
+                }
+                return;
+        }
+
+        Vector2 worldPos = GetScreenToWorld2D(GetMousePosition(), camera);
+        int gridX = worldPos.x / tileSize;
+        int gridY = worldPos.y / tileSize;
+
+        if (gridX < 0 || gridX >= engine->getWidth() || gridY < 0 || gridY >= engine->getHeight()) {
+                return;
+        }
+        int index = engine->getCellID(gridX, gridY);
+
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                if (currentState == GameState::BEGIN) {
+                        engine->generateBoard(gridX, gridY);
+                        engine->countNeighboringMines();
+                        currentState = GameState::RUNNING;
+                }
+
+                if (engine->getGrid()[index].isRevealed) {
+                        engine->chordCell(index);
+                } else {
+                        engine->revealCell(index);
+                }
+        } else if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && currentState == GameState::RUNNING) {
+                auto &cell = engine->getCell(index);
+                if (!cell.isRevealed) {
+                        cell.isFlagged = !cell.isFlagged;
+                        cell.isFlagged ? engine->incrementFlag() : engine->decrementFlag();
+                }
+        }
+}
+
+
+void GameController::update() {
+        if (currentState != GameState::RUNNING) {
+                return;
+        }
+        timeElapsed = static_cast<int>(GetTime() - startTime);
+
+        int revealedCount = 0;
+        bool mineExploded = false;
+        int totalCells = static_cast<int>(engine->getGrid().size());
+
+        for (const auto &cell: engine->getGrid()) {
+                if (cell.isRevealed) {
+                        if (cell.isMine) {
+                                mineExploded = true;
+                                break;
+                        }
+                        ++revealedCount;
+                }
+        }
+        if (mineExploded) {
+                currentState = GameState::LOST;
+                for (int idx = 0; idx < totalCells; ++idx) {
+                        if (engine->getGrid()[idx].isMine) {
+                                engine->getCell(idx).isRevealed = true;
+                        }
+                }
+        } else if (revealedCount == (totalCells - engine->total_mines())) {
+                currentState = GameState::WON;
+        }
+}
+
+void GameController::reset(DifficultyConfig config) {
+        // 1. Instantiation: Create a fresh empty engine wrapper via default 0-arg constructor
+        if (selectedMode == GameMode::CLASSIC) {
+                engine = std::make_unique<ClassicMinesweeper>();
+        } else {
+                engine = std::make_unique<NoGuessMinesweeper>();
+        }
+
+        // Use loadBoard implementation to configure the grid vectors
+        // (Accessing properties directly since DifficultyConfig is a raw struct!)
+        engine->loadBoard(config.width, config.height, config.mineCount);
+
+        // 3. Dynamic layout updates
+        SetWindowSize(engine->getWidth() * tileSize, engine->getHeight() * tileSize + 60);
+
+        // 4. Reset tracking metrics
+        timeElapsed = 0;
+        startTime = GetTime();
+        currentState = GameState::BEGIN;
+        appState = AppState::PLAYING;
+
+        // 5. Reset camera matrices
+        camera.target = {0.0f, 0.0f};
+        camera.offset = {0.0f, 60.0f}; // Clear room for the UI header text
+        camera.zoom = 1.0f;
+}
+
+Color GameController::getNumberColor(int number) {
+        switch (number) {
+                case 1:
+                        return GetColor(0x0000FFFF);
+                case 2:
+                        return GetColor(0x008000FF);
+                case 3:
+                        return GetColor(0xFF0000FF);
+                case 4:
+                        return GetColor(0x00008BFF);
+                case 5:
+                        return GetColor(0x800000FF);
+                case 6:
+                        return GetColor(0x008080FF);
+                case 7:
+                        return GetColor(0x000000FF);
+                case 8:
+                        return GetColor(0x808080FF);
+                default:
+                        return WHITE;
+        }
+}
