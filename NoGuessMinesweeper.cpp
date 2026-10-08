@@ -53,9 +53,6 @@ void NoGuessMinesweeper::generateBoard(int firstClickX, int firstClickY) {
                 //Precomputing coefficients
                 countNeighboringMines();
 
-                // backup
-                std::vector<Cell> pristineLayoutBackup = grid;
-
                 // Execute the first click virtually to open up the starting viewport cascade
                 int firstClickIdx = firstClickX + firstClickY * width;
                 revealCell(firstClickIdx);
@@ -100,7 +97,7 @@ void NoGuessMinesweeper::generateBoard(int firstClickX, int firstClickY) {
                 if (legalBoardFound) {
                         // Restore the grid state back to its pristine post-generation setup
                         // This hides the revealed blocks back under the safe fog
-                        grid = pristineLayoutBackup;
+                        resetBoardState();
                         return;
                 }
         }
@@ -333,3 +330,4 @@ std::vector<Deduction> NoGuessMinesweeper::reduceOverlappingEquations(const Line
         // return the final mapping
         return deductions;
 }
+

@@ -49,6 +49,8 @@ private:
 
         void reset(DifficultyConfig config);
 
+        void centerCamera();
+
 public:
         GameController() {
                 camera.target = {0.0f, 0.0f};

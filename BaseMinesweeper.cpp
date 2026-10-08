@@ -32,31 +32,49 @@ void BaseMinesweeper::loadBoard(int w, int h, int m) {
         }
 }
 
+void BaseMinesweeper::resetBoardState() {
+        for (auto &cell: grid) {
+                cell.isRevealed = false;
+                cell.isFlagged = false;
+                cell.id = 1;
+        }
+}
+
 bool BaseMinesweeper::revealCell(int index) {
         if (index < 0 || index >= static_cast<int>(grid.size())) {
                 return false;
         }
-        Cell &cell = getCell(index);
-        if (cell.isRevealed || cell.isFlagged) {
+        Cell *startCell = &getCell(index);
+        if (startCell->isRevealed || startCell->isFlagged) {
                 return false;
         }
-        cell.isRevealed = true;
-
-        if (cell.neighboringMines == 0 && !cell.isMine) {
-                for (Cell *neighbor: cell.neighbors) {
-                        revealCell(neighbor - &grid[0]);
+        std::vector<Cell *> toReveal;
+        toReveal.push_back(startCell);
+        while (!toReveal.empty()) {
+                Cell *current = toReveal.back();
+                toReveal.pop_back();
+                if (current->isRevealed || current->isFlagged) {
+                        continue;;
+                }
+                current->isRevealed = true;
+                if (current->neighboringMines == 0 && !current->isMine) {
+                        for (Cell *neighbor: current->neighbors) {
+                                if (!neighbor->isRevealed && !neighbor->isFlagged) {
+                                        toReveal.push_back(neighbor);
+                                }
+                        }
                 }
         }
         return true;
 }
 
 void BaseMinesweeper::countNeighboringMines() {
-        for (auto &cell : grid) {
+        for (auto &cell: grid) {
                 if (cell.isMine) {
                         continue;
                 }
                 int mineCount = 0;
-                for (Cell *neighbor : cell.neighbors) {
+                for (Cell *neighbor: cell.neighbors) {
                         if (neighbor->isMine) {
                                 ++mineCount;
                         }
@@ -109,4 +127,7 @@ void BaseMinesweeper::incrementFlag() {
 
 void BaseMinesweeper::decrementFlag() {
         totalFlags--;
+}
+
+void floodFillRecursion() {
 }

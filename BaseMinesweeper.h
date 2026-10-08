@@ -29,6 +29,7 @@ protected:
         int totalFlags = 0;
         std::vector<Cell> grid;
         bool useSafeOpening = true;
+        void resetBoardState();
         [[nodiscard]] bool isValid(int x, int y) const {
                 return x >= 0 && x < width && y >= 0 && y < height;
         }
@@ -86,6 +87,8 @@ public:
         [[nodiscard]] int getHeight() const {
                 return height;
         }
+
+
 
 };
 #endif
