@@ -74,7 +74,9 @@ void GameController::renderMainMenu() const {
         int titleWidth = MeasureText("MINESWEEPER", 60);
         DrawText("MINESWEEPER", (screenWidth - titleWidth) / 2, screenHeight / 4 - 60, 60, RAYWHITE);
 
-        const char* modeText = selectedMode == GameMode::CLASSIC ? "Mode: Classic (Press M to toggle)" : "Mode: NoGuess (Press M to toggle)";
+        const char *modeText = selectedMode == GameMode::CLASSIC
+                                       ? "Mode: Classic (Press M to toggle)"
+                                       : "Mode: NoGuess (Press M to toggle)";
         int modeWidth = MeasureText(modeText, 20);
         DrawText(modeText, (screenWidth - modeWidth) / 2, screenHeight / 4 + 20, 20, LIGHTGRAY);
 
@@ -166,7 +168,6 @@ void GameController::renderGame() const {
 void GameController::handleGameInput() {
         if (IsKeyPressed(KEY_ESCAPE)) {
                 appState = AppState::MAIN_MENU;
-
                 return;
         }
         if (IsKeyPressed(KEY_F11)) {
@@ -200,8 +201,8 @@ void GameController::handleGameInput() {
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 if (currentState == GameState::BEGIN) {
                         engine->generateBoard(gridX, gridY);
-                        engine->countNeighboringMines();
                         currentState = GameState::RUNNING;
+                        startTime = GetTime(); //Fixed the early clock initialization
                 }
 
                 if (engine->getGrid()[index].isRevealed) {
@@ -267,7 +268,6 @@ void GameController::reset(DifficultyConfig config) {
 
         // 4. Reset tracking metrics
         timeElapsed = 0;
-        startTime = GetTime();
         currentState = GameState::BEGIN;
         appState = AppState::PLAYING;
 
