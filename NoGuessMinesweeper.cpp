@@ -8,6 +8,7 @@
 #include <iostream>
 #include <random>
 
+
 void NoGuessMinesweeper::generateBoard(int firstClickX, int firstClickY) {
         //randomization
         std::random_device rd;
@@ -16,7 +17,7 @@ void NoGuessMinesweeper::generateBoard(int firstClickX, int firstClickY) {
         std::uniform_int_distribution<> distY(0, height - 1);
 
         bool legalBoardFound = false;
-        int safetyMaxAttempts = 1000; // Prevent an infinite loop if constraints are impossible
+        int safetyMaxAttempts = 1000; // Prevent an infinite loop if constraints are impossible,
         int attempts = 0;
 
         while (attempts < safetyMaxAttempts && !legalBoardFound) {
@@ -95,14 +96,14 @@ void NoGuessMinesweeper::generateBoard(int firstClickX, int firstClickY) {
                         }
                 }
                 if (legalBoardFound) {
-                        // Restore the grid state back to its pristine post-generation setup
+                        // Restore the grid state back to its default setup
                         // This hides the revealed blocks back under the safe fog
                         resetBoardState();
                         return;
                 }
         }
 
-        // Fallback: If 1000 boards failed, fallback to the last generated board to prevent a crash
+        // Fallback: If 1000 boards failed, fallback to the last generated board to prevent a crash (improbable)
         // TODO: print a mesage to let the user know
         for (auto &cell: grid) {
                 cell.isRevealed = false;
@@ -135,45 +136,44 @@ void NoGuessMinesweeper::assignFrontierIDs(LinearEquationSystem &system) {
         }
 }
 
-// creates an actual linear equation system
+// creates an actual reduced linear equation system
 void NoGuessMinesweeper::buildEquation(LinearEquationSystem &system) const {
-        // builds the x_1 + x_2 + ... + x_n = k equation
+        // total active frontier variables across all open clues.
         int totalVariables = static_cast<int>(system.variableToCellMap.size());
-        // no valid front, collapse (edge case)
+        // early exit guard
         if (totalVariables == 0) {
                 return;
         }
-        // Needs improvement but basically iterates over cells
-        for (auto &clueCell: grid) {
+        // iterates over the cells and ignores the null assigned frontier values to eliminate redundancy
+        for (const auto &clueCell: grid) {
+
                 if (clueCell.isRevealed && clueCell.neighboringMines > 0) {
                         //initialize a row
-                        MatrixRow row;
-                        //start a clean row with totalVariables times 0
-                        row.coefficients.assign(totalVariables, 0);
-
+                        SparseRow row;
                         // total number of 1's
-                        int activeVariablesInRow = 0;
                         int currentFlagsCount = 0;
 
-                        // if the id is assigned (non-blank), then take it as a clue
                         for (Cell *neighbor: clueCell.neighbors) {
+                                // count the already placed flags to reduce
                                 if (neighbor->isFlagged) {
                                         ++currentFlagsCount;
                                 } else if (neighbor->id != -1) {
-                                        row.coefficients[neighbor->id] = 1;
-                                        ++activeVariablesInRow;
+                                        // evaluate the neighbor and push if is an active frontier member
+                                        row.activeVarIDs.push_back(neighbor->id);
                                 }
                         }
-                        // set up the final equation and add the row to the solution matrix
-                        if (activeVariablesInRow > 0) {
+                        //check if the row is satisfied
+                        if (!row.activeVarIDs.empty()) {
+                                // remaining unknown mines needed around this clue (clue count minus flags)
                                 row.targetValue = clueCell.neighboringMines - currentFlagsCount;
+                                // append to the equation system
                                 system.matrixA.push_back(row);
                         }
                 }
         }
 }
 
-
+// bounds them all together
 LinearEquationSystem NoGuessMinesweeper::buildLinearSystem() {
         LinearEquationSystem system;
         assignFrontierIDs(system);
@@ -181,16 +181,6 @@ LinearEquationSystem NoGuessMinesweeper::buildLinearSystem() {
         return system;
 }
 
-//simplify the matrix eliminating the trivial variables
-std::vector<int> NoGuessMinesweeper::getActiveVariables(const MatrixRow &row, int totalVariables) {
-        std::vector<int> activeVars;
-        for (int i = 0; i < totalVariables; ++i) {
-                if (row.coefficients[i] == 1) {
-                        activeVars.push_back(i);
-                }
-        }
-        return activeVars;
-}
 
 //handle easy cases
 std::vector<Deduction> NoGuessMinesweeper::executeAlgebraicPass(const LinearEquationSystem &system) {
@@ -210,29 +200,25 @@ std::vector<Deduction> NoGuessMinesweeper::executeAlgebraicPass(const LinearEqua
 std::vector<Deduction> NoGuessMinesweeper::findTrivialDeductions(const LinearEquationSystem &system) {
         //Placeholder that enables the algorithm to act upon certain cells
         std::vector<Deduction> deductions;
-        //same, will work on it later. DRY
-        int totalVars = static_cast<int>(system.variableToCellMap.size());
-        // linear equation system
+
         for (const auto &row: system.matrixA) {
-                std::vector<int> activeVars = getActiveVariables(row, totalVars);
-                int activeCount = static_cast<int>(activeVars.size());
-                //eliminate trivials
+                int activeCount = static_cast<int>(row.activeVarIDs.size());
                 if (activeCount == 0) {
                         continue;
                 }
                 // the following are instant reducible guaranteed golden answers
                 // If an equation sums to 0, every variable inside it MUST equal 0 (Safe).
                 if (row.targetValue == 0) {
-                        for (int varId: activeVars) {
+                        for (int varId: row.activeVarIDs) {
                                 // the variable isn't a mine
                                 deductions.push_back({system.variableToCellMap[varId], false});
                         }
                         return deductions;
                 }
-                // Math Principle: Max Target (b = n)
+                // math Principle: Max Target (b = n)
                 // If the target equals the number of variables, they MUST all equal 1 (Mines).
                 if (row.targetValue == activeCount) {
-                        for (int varId: activeVars) {
+                        for (int varId: row.activeVarIDs) {
                                 deductions.push_back({system.variableToCellMap[varId], true});
                         }
                         return deductions;
@@ -247,35 +233,24 @@ std::vector<Deduction> NoGuessMinesweeper::findTrivialDeductions(const LinearEqu
 std::vector<Deduction> NoGuessMinesweeper::reduceOverlappingEquations(const LinearEquationSystem &system) {
         //same stuff
         std::vector<Deduction> deductions;
-        int totalVars = static_cast<int>(system.variableToCellMap.size());
         const auto &matrix = system.matrixA;
         int numRows = static_cast<int>(matrix.size());
 
-        //a matrix of lists that holds the variable id's for the specific row.
-        // e.g rowActiveVars[0] = {1, 2} means that this row holds x_1 and x_2
-        std::vector<std::vector<int>> rowActiveVars(numRows);
-
-
-        //set up the matrix
         for (int i = 0; i < numRows; ++i) {
-                rowActiveVars[i] = getActiveVariables(matrix[i], totalVars);
-        }
+                // reassigned for readability
+                const auto &rowI = matrix[i];
+                // reduced row
+                int activeInI = static_cast<int>(rowI.activeVarIDs.size());
+                if (activeInI == 0) continue;
 
-        // nested loop
-        for (int i = 0; i < numRows; ++i) {
-                // how many clues touch i
-                int activeInI = static_cast<int>(rowActiveVars[i].size());
-                if (activeInI == 0) {
-                        continue;
-                }
                 for (int j = 0; j < numRows; ++j) {
-                        if (i == j) {
-                                continue;
-                        }
-                        // how many clues touch j
-                        int activeInJ = static_cast<int>(rowActiveVars[j].size());
-                        // I can only be a subset of J if I has strictly hidden fewer variables than J.
-                        // really important as it enables the algorithm to actually think instead of going off from obvious solution
+                        //skip overlapping values
+                        if (i == j) continue;
+                        // reassigned
+                        const auto &rowJ = matrix[j];
+                        int activeInJ = static_cast<int>(rowJ.activeVarIDs.size());
+
+                        // I can only be a strict subset of J if I touches fewer cells than J
                         if (activeInI >= activeInJ) {
                                 continue;
                         }
@@ -283,18 +258,22 @@ std::vector<Deduction> NoGuessMinesweeper::reduceOverlappingEquations(const Line
                         //If every single hidden cell touching Clue I also touches Clue J then isSubset stays true.
                         bool isSubset = true;
                         // prove if it is true, look at the other clue and see if they overlap
-                        for (int varId: rowActiveVars[i]) {
-                                // if the clue does not touch this cell
-                                if (matrix[j].coefficients[varId] != 1) {
-                                        //the moment a single cell is found that clue i cares about but j doesn't,
-                                        // the nested relationship is broken
+                        for (int varI: rowI.activeVarIDs) {
+                                bool foundInJ = false;
+                                for (int varJ: rowJ.activeVarIDs) {
+                                        if (varI == varJ) {
+                                                foundInJ = true;
+                                                break;
+                                        }
+                                }
+                                if (!foundInJ) {
                                         isSubset = false;
                                         break;
                                 }
                         }
                         // If strict subset is proven, execute linear combination: Row J - Row I
                         if (isSubset) {
-                                int reducedTarget = matrix[j].targetValue - matrix[i].targetValue;
+                                int reducedTarget = rowJ.targetValue - rowI.targetValue;
                                 // number of unique cells that only touch J in this context
                                 int reducedActiveCount = activeInJ - activeInI;
 
@@ -302,14 +281,18 @@ std::vector<Deduction> NoGuessMinesweeper::reduceOverlappingEquations(const Line
                                 std::vector<int> reducedActiveVars;
                                 //thx gemini, limit memory allocation
                                 reducedActiveVars.reserve(reducedActiveCount);
-
-                                // save the non overlapping J variables
-                                for (int varId: rowActiveVars[j]) {
-                                        if (matrix[i].coefficients[varId] == 0) {
-                                                reducedActiveVars.push_back(varId);
+                                for (int varJ: rowJ.activeVarIDs) {
+                                        bool inI = false;
+                                        for (int varI: rowI.activeVarIDs) {
+                                                if (varJ == varI) {
+                                                        inI = true;
+                                                        break;
+                                                }
+                                        }
+                                        if (!inI) {
+                                                reducedActiveVars.push_back(varJ);
                                         }
                                 }
-
                                 // if the target drops to 0, then the unique cells belonging to J are safe and ready to open
                                 if (reducedTarget == 0) {
                                         for (int varId: reducedActiveVars) {
@@ -330,4 +313,3 @@ std::vector<Deduction> NoGuessMinesweeper::reduceOverlappingEquations(const Line
         // return the final mapping
         return deductions;
 }
-

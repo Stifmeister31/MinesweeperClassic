@@ -13,29 +13,33 @@ struct Deduction {
 };
 
 // Holds the boolean coefficients as well as the solution parameter
-struct MatrixRow {
-        std::vector<int> coefficients;
-        int targetValue = 0;
+// struct MatrixRow {
+//         std::vector<int> coefficients;
+//         int targetValue = 0;
+// };
+
+// Holds the boolean coefficients as well as the dynamic solution parameter.
+struct SparseRow {
+        std::vector<int> activeVarIDs;
+        int targetValue;
 };
 
 // A linear equation system that updates with each expansion
 struct LinearEquationSystem {
-        std::vector<MatrixRow> matrixA;
+        std::vector<SparseRow> matrixA;
         std::vector<Cell *> variableToCellMap;
 };
 
 
 class NoGuessMinesweeper : public BaseMinesweeper {
 private:
-        bool basicSolver();
+
 
         void assignFrontierIDs(LinearEquationSystem &);
 
         void buildEquation(LinearEquationSystem &) const;
 
         LinearEquationSystem buildLinearSystem();
-
-        static std::vector<int> getActiveVariables(const MatrixRow &row, int totalVariables);
 
         static std::vector<Deduction> findTrivialDeductions(const LinearEquationSystem &system);
 
